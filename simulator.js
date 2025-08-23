@@ -1,61 +1,48 @@
 const axios = require("axios");
 
-const API_BASE = "http://localhost:5000"; 
-const LOGIN_PAYLOAD = { username: "admin", password: "1234" };
+const BASE_URL = "http://localhost:5000"; // ✅ Local API
+let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNzU1OTU0ODYwLCJleHAiOjE3NTU5NTU3NjB9.EJaJpph4uCl_-bttdl1x0l2D1pb9xlZPQm7pmLuFKPQ";
 
-let JWT_TOKEN = null;
-
-// Step 1: Login
 async function login() {
   try {
-    const res = await axios.post(`${API_BASE}/api/login`, LOGIN_PAYLOAD);
-    JWT_TOKEN = res.data.accessToken;
-    console.log("✅ Logged in, token acquired");
-  } catch (err) {
-    console.error("❌ Login failed:", err.response?.data || err.message);
-  }
-}
-
-// Step 2: Generate random readings
-function generateReadings() {
-  const pm10 = Math.floor(Math.random() * 100);
-  const pm25 = Math.floor(Math.random() * 80);
-  const co2 = Math.floor(Math.random() * 2000);
-  const temp = (20 + Math.random() * 10).toFixed(1);
-  const humidity = Math.floor(30 + Math.random() * 50);
-  const voc = Math.floor(Math.random() * 500);
-  return `${pm10}|${pm25}|${co2}|${temp}|${humidity}|${voc}|0000|0030|00`;
-}
-
-// Step 3: Send bulk data
-async function sendBulkData() {
-  if (!JWT_TOKEN) {
-    console.log("⚠️ No token, skipping bulk data...");
-    return;
-  }
-
-  const readingsFormat = "pm10|pm25|co2|temperature|humidity|voc|err|sgs|battery";
-  const readings = `${generateReadings()}:${generateReadings()}`;
-
-  try {
-    const response = await axios.post(
-      `${API_BASE}/api/device/bulk`,
-      { device: "1234567890", readingsFormat, readings },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${JWT_TOKEN}`
-        }
-      }
-    );
-    console.log("✅ Bulk data sent:", response.data);
+    const response = await axios.post(`${BASE_URL}/api/login`, {
+      username: "admin",
+      password: "1234"
+    });
+    token = response.data.accessToken;
+    console.log(" Logged in, token acquired");
   } catch (error) {
-    console.error("❌ Bulk data error:", error.response?.data || error.message);
+    console.error(" Login error:", error.message);
   }
 }
 
-// Run
-(async () => {
+async function sendBulkData() {
+  try {
+    const payload = {
+      device: "TEST_DEVICE_001",
+      readingsFormat: ["temp", "humidity", "aqi"],
+      readings: [
+        [Math.floor(Math.random() * 50), Math.floor(Math.random() * 100), Math.floor(Math.random() * 500)]
+      ]
+    };
+    console.log(`➡️ Sending bulk data to: ${BASE_URL}/api/device/bulk`);
+
+    const response = await axios.post(`${BASE_URL}/api/device/bulk`, payload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    console.log("Bulk data sent:", response.data.message);
+  } catch (error) {
+    console.error("Bulk data error:", error.message);
+  }
+}
+
+async function start() {
   await login();
-  setInterval(sendBulkData, 10000);
-})();
+  setInterval(sendBulkData, 3000); // send every 3 sec
+}
+
+start();
