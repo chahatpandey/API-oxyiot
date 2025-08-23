@@ -294,37 +294,28 @@ app.patch("/api/device/update", authenticateToken, async (req, res) => {
 const qs = require("qs"); // For URL-encoded format
 
 // ✅ Bulk Data API
+app.use((req, res, next) => {
+  console.log("👉 Incoming request:", req.method, req.url);
+  next();
+});
+
 app.post("/api/device/bulk", authenticateToken, async (req, res) => {
   const { device, readingsFormat, readings } = req.body;
 
   try {
-    const payload = qs.stringify({
-      device,
-      readingsFormat,
-      readings
-    });
+    console.log("Bulk data received:", { device, readingsFormat, readings });
 
-    const response = await axios.post(
-      "https://device.oxyiot.com/device/api/bulk",
-      payload,
-      {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Authorization: `Token ${process.env.OXYIOT_API_TOKEN || "673cd9b1a7a3f150afbb2edd5d22f16268cb6a1e"}`
-        }
-      }
-    );
-
+    // Instead of sending to OxyIOT, just respond
     res.status(200).json({
       success: true,
-      message: "Bulk data submitted successfully",
-      data: response.data
+      message: "Bulk data received locally",
+      data: { device, readingsFormat, readings }
     });
   } catch (error) {
-    console.error("Bulk Data API Error:", error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({
+    console.error("Bulk Data Handling Error:", error.message);
+    res.status(500).json({
       success: false,
-      message: error.response?.data || "Failed to submit bulk data"
+      message: "Failed to process bulk data"
     });
   }
 });
