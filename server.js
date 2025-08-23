@@ -291,6 +291,81 @@ app.patch("/api/device/update", authenticateToken, async (req, res) => {
     });
   }
 });
+const qs = require("qs"); // For URL-encoded format
+
+// ✅ Bulk Data API
+app.post("/api/device/bulk", authenticateToken, async (req, res) => {
+  const { device, readingsFormat, readings } = req.body;
+
+  try {
+    const payload = qs.stringify({
+      device,
+      readingsFormat,
+      readings
+    });
+
+    const response = await axios.post(
+      "https://device.oxyiot.com/device/api/bulk",
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Token ${process.env.OXYIOT_API_TOKEN || "673cd9b1a7a3f150afbb2edd5d22f16268cb6a1e"}`
+        }
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Bulk data submitted successfully",
+      data: response.data
+    });
+  } catch (error) {
+    console.error("Bulk Data API Error:", error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({
+      success: false,
+      message: error.response?.data || "Failed to submit bulk data"
+    });
+  }
+});
+
+// ✅ Device Configuration API
+app.post("/api/device/configuration", authenticateToken, async (req, res) => {
+  const { device_id, sensor, swver, calver, sendc } = req.body;
+
+  try {
+    const payload = qs.stringify({
+      device_id,
+      sensor,
+      swver,
+      calver,
+      sendc
+    });
+
+    const response = await axios.post(
+      "https://device.oxyiot.com/device/api/configuration",
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Token ${process.env.OXYIOT_API_TOKEN || "673cd9b1a7a3f150afbb2edd5d22f16268cb6a1e"}`
+        }
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Device configuration updated successfully",
+      data: response.data
+    });
+  } catch (error) {
+    console.error("Device Configuration API Error:", error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({
+      success: false,
+      message: error.response?.data || "Failed to update device configuration"
+    });
+  }
+});
 
 
 const PORT = 5000;
