@@ -99,6 +99,33 @@ app.post("/api/device/configuration", authenticateToken, (req, res) => {
   console.log("Device configuration received:", req.body);
   res.json({ success: true, message: "Configuration updated locally" });
 });
+// ✅ Fetch Device Data API
+app.post("/api/device/fetch-device-data", authenticateToken, (req, res) => {
+  const { device_id } = req.body;
+
+  const device = devices.find(d => d.device_id === device_id);
+  if (!device) {
+    return res.status(404).json({ success: false, message: "Device not found" });
+  }
+
+  const sampleData = {
+    device_id,
+    lastUpdated: new Date().toISOString(),
+    readings: {
+      temperature: (20 + Math.random() * 5).toFixed(2),
+      humidity: (40 + Math.random() * 20).toFixed(2),
+      pm2_5: (10 + Math.random() * 50).toFixed(2),
+      pm10: (20 + Math.random() * 80).toFixed(2),
+      co2: (300 + Math.random() * 100).toFixed(2)
+    }
+  };
+
+  res.json({
+    success: true,
+    message: "Device data fetched successfully",
+    data: sampleData
+  });
+});
 
 const PORT = 5000;
 app.listen(PORT, () => console.log(`✅ Local API running on http://localhost:${PORT}`));
