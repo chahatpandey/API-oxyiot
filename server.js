@@ -108,16 +108,20 @@ app.post("/api/device/fetch-device-data", authenticateToken, (req, res) => {
     return res.status(404).json({ success: false, message: "Device not found" });
   }
 
+  const pm25 = (10 + Math.random() * 50).toFixed(2);
+  const pm10 = (20 + Math.random() * 80).toFixed(2);
+
   const sampleData = {
     device_id,
     lastUpdated: new Date().toISOString(),
     readings: {
       temperature: (20 + Math.random() * 5).toFixed(2),
       humidity: (40 + Math.random() * 20).toFixed(2),
-      pm2_5: (10 + Math.random() * 50).toFixed(2),
-      pm10: (20 + Math.random() * 80).toFixed(2),
+      pm2_5: pm25,
+      pm10: pm10,
       co2: (300 + Math.random() * 100).toFixed(2)
-    }
+    },
+    aqi: calculateAQI(parseFloat(pm25), parseFloat(pm10))
   };
 
   res.json({
@@ -126,6 +130,40 @@ app.post("/api/device/fetch-device-data", authenticateToken, (req, res) => {
     data: sampleData
   });
 });
+function calculateAQI(pm25, pm10) {
+  const pm25Breakpoints = [
+    { low: 0, high: 30, aqiLow: 0, aqiHigh: 50 },
+    { low: 31, high: 60, aqiLow: 51, aqiHigh: 100 },
+    { low: 61, high: 90, aqiLow: 101, aqiHigh: 200 },
+    { low: 91, high: 120, aqiLow: 201, aqiHigh: 300 },
+    { low: 121, high: 250, aqiLow: 301, aqiHigh: 400 },
+    { low: 251, high: 999, aqiLow: 401, aqiHigh: 500 }
+  ];
+
+  const pm10Breakpoints = [
+    { low: 0, high: 50, aqiLow: 0, aqiHigh: 50 },
+    { low: 51, high: 100, aqiLow: 51, aqiHigh: 100 },
+    { low: 101, high: 250, aqiLow: 101, aqiHigh: 200 },
+    { low: 251, high: 350, aqiLow: 201, aqiHigh: 300 },
+    { low: 351, high: 430, aqiLow: 301, aqiHigh: 400 },
+    { low: 431, high: 999, aqiLow: 401, aqiHigh: 500 }
+  ];
+
+  function getAQI(value, breakpoints) {
+    for (let bp of breakpoints) {
+      if (value >= bp.low && value <= bp.high) {
+        return ((bp.aqiHigh - bp.aqiLow) / (bp.high - bp.low)) * (value - bp.low) + bp.aqiLow;
+      }
+    }
+    return 500; // max AQI
+  }
+
+  const aqiPM25 = getAQI(pm25, pm25Breakpoints);
+  const aqiPM10 = getAQI(pm10, pm10Breakpoints);
+
+  return Math.max(aqiPM25, aqiPM10);
+}
+
 
 const PORT = 5000;
 app.listen(PORT, () => console.log(`✅ Local API running on http://localhost:${PORT}`));
