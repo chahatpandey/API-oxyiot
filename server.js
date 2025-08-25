@@ -17,16 +17,41 @@ app.get("/api/test", (req, res) => {
 });
 
 //  Login API
+let users = []; // In-memory user storage
+
 app.post("/api/login", (req, res) => {
-  const { username, password } = req.body;
-  if (username === "admin" && password === "1234") {
-    const accessToken = jwt.sign({ username }, JWT_SECRET, { expiresIn: "15m" });
-    const refreshToken = jwt.sign({ username }, JWT_REFRESH_SECRET, { expiresIn: "7d" });
-    refreshTokens.push(refreshToken);
-    return res.json({ success: true, message: "Login successful", accessToken, refreshToken });
+  const { firstname, lastname, email, isStaff, isAdmin } = req.body;
+
+  if (!firstname || !lastname || !email) {
+    return res.status(400).json({ success: false, message: "All fields are required" });
   }
-  res.status(401).json({ success: false, message: "Invalid credentials" });
+
+  // Check if user already exists
+  let user = users.find(u => u.email === email);
+
+  if (!user) {
+    // Register new user
+    user = { firstname, lastname, email, isStaff: !!isStaff, isAdmin: !!isAdmin };
+    users.push(user);
+    console.log("New user registered:", user);
+  } else {
+    console.log("Existing user logged in:", user);
+  }
+
+  const payload = { ...user };
+  const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" });
+  const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: "7d" });
+  refreshTokens.push(refreshToken);
+
+  res.json({
+    success: true,
+    message: user ? "Login successful" : "User registered successfully",
+    accessToken,
+    refreshToken,
+    user
+  });
 });
+
 
 // Middleware: Verify Token
 function authenticateToken(req, res, next) {
@@ -42,19 +67,21 @@ function authenticateToken(req, res, next) {
 
 //  Profile Route
 app.get("/api/profile", authenticateToken, (req, res) => {
-  res.json({ success: true, message: "Profile data", user: req.user });
+  const { firstname, lastname, email, isStaff, isAdmin } = req.user;
+
+  res.json({
+    success: true,
+    message: "Profile fetched successfully",
+    user: {
+      firstname,
+      lastname,
+      email,
+      isStaff,
+      isAdmin
+    }
+  });
 });
 
-//  Simulated Device APIs (Local)
-let devices = [];
-let subUsers = [];
-
-// Register Device
-app.post("/api/device/register", authenticateToken, (req, res) => {
-  const { device_id, password } = req.body;
-  devices.push({ device_id, password });
-  res.json({ success: true, message: "Device registered locally", devices });
-});
 
 // List Devices
 app.get("/api/device/list", authenticateToken, (req, res) => {
@@ -163,6 +190,37 @@ function calculateAQI(pm25, pm10) {
 
   return Math.max(aqiPM25, aqiPM10);
 }
+// ✅ Fetch Device Details Endpoint
+app.post("/api/device/details", authenticateToken, (req, res) => {
+  const { device_id } = req.body;
+
+  const device = devices.find(d => d.device_id === device_id);
+  if (!device) {
+    return res.status(404).json({ success: false, message: "Device not found" });
+  }
+
+  // Mock or dynamic values for device details
+  const deviceDetails = {
+    device_id: device.device_id,
+    sku: "SKU" + Math.floor(1000 + Math.random() * 9000),
+    sensor: "Dust Sensor",
+    frequency: "2.4GHz",
+    device_type: "Air Quality Monitor",
+    hardware_version: "v1.2",
+    mac_address: "34:f3:9a:b3:85:bb",
+    software_version: "1.0.5",
+    active: true,
+    admin: "admin@xyz.com",
+    wifi_always_on: true,
+    location: "New Delhi, India"
+  };
+
+  res.json({
+    success: true,
+    message: "Device details fetched successfully",
+    data: deviceDetails
+  });
+});
 
 
 const PORT = 5000;
