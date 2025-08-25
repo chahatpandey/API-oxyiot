@@ -2,6 +2,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 
 const app = express();
 app.use(cors());
@@ -11,49 +12,46 @@ const JWT_SECRET = "mysecretkey123";
 const JWT_REFRESH_SECRET = "myrefresh123";
 let refreshTokens = [];
 
+// ✅ MongoDB Connection
+mongoose.connect("mongodb://localhost:27017/deviceDB", {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(() => console.log("✅ MongoDB Connected"))
+  .catch(err => console.error("❌ MongoDB connection error:", err));
+
+// ✅ MongoDB Schemas
+const userSchema = new mongoose.Schema({
+  firstname: String,
+  lastname: String,
+  email: { type: String, unique: true },
+  isStaff: { type: Boolean, default: false },
+  isAdmin: { type: Boolean, default: false }
+});
+
+const deviceSchema = new mongoose.Schema({
+  device_id: { type: String, unique: true },
+  sku: String,
+  sensor: String,
+  frequency: String,
+  device_type: String,
+  hardware_version: String,
+  mac_address: String,
+  software_version: String,
+  active: Boolean,
+  admin: String,
+  wifi_always_on: Boolean,
+  location: String
+});
+
+const User = mongoose.model("User", userSchema);
+const Device = mongoose.model("Device", deviceSchema);
+
 // ✅ Health check
 app.get("/api/test", (req, res) => {
   res.send("✅ Local API running successfully!");
 });
 
-//  Login API
-let users = []; // In-memory user storage
-
-app.post("/api/login", (req, res) => {
-  const { firstname, lastname, email, isStaff, isAdmin } = req.body;
-
-  if (!firstname || !lastname || !email) {
-    return res.status(400).json({ success: false, message: "All fields are required" });
-  }
-
-  // Check if user already exists
-  let user = users.find(u => u.email === email);
-
-  if (!user) {
-    // Register new user
-    user = { firstname, lastname, email, isStaff: !!isStaff, isAdmin: !!isAdmin };
-    users.push(user);
-    console.log("New user registered:", user);
-  } else {
-    console.log("Existing user logged in:", user);
-  }
-
-  const payload = { ...user };
-  const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" });
-  const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: "7d" });
-  refreshTokens.push(refreshToken);
-
-  res.json({
-    success: true,
-    message: user ? "Login successful" : "User registered successfully",
-    accessToken,
-    refreshToken,
-    user
-  });
-});
-
-
-// Middleware: Verify Token
+// ✅ Middleware: Verify Token
 function authenticateToken(req, res, next) {
   const token = req.headers["authorization"]?.split(" ")[1];
   if (!token) return res.status(401).json({ success: false, message: "No token provided" });
@@ -65,98 +63,143 @@ function authenticateToken(req, res, next) {
   });
 }
 
-//  Profile Route
-app.get("/api/profile", authenticateToken, (req, res) => {
-  const { firstname, lastname, email, isStaff, isAdmin } = req.user;
+// ✅ Login/Signup API
+app.post("/api/login", async (req, res) => {
+  const { firstname, lastname, email, isStaff, isAdmin } = req.body;
 
-  res.json({
-    success: true,
-    message: "Profile fetched successfully",
-    user: {
-      firstname,
-      lastname,
-      email,
-      isStaff,
-      isAdmin
+  if (!firstname || !lastname || !email) {
+    return res.status(400).json({ success: false, message: "All fields are required" });
+  }
+
+  try {
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      user = new User({ firstname, lastname, email, isStaff: !!isStaff, isAdmin: !!isAdmin });
+      await user.save();
     }
-  });
+
+    const accessToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: "15m" });
+    const refreshToken = jwt.sign({ email }, JWT_REFRESH_SECRET, { expiresIn: "7d" });
+    refreshTokens.push(refreshToken);
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      accessToken,
+      refreshToken,
+      user
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
+// ✅ Profile API
+app.get("/api/profile", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.user.email });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-// List Devices
-app.get("/api/device/list", authenticateToken, (req, res) => {
-  res.json({ success: true, message: "Device list", devices });
+    res.json({ success: true, message: "Profile fetched successfully", user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
-// Update Device
-app.patch("/api/device/update", authenticateToken, (req, res) => {
+// ✅ Register Device API
+app.post("/api/device/register", authenticateToken, async (req, res) => {
+  try {
+    const device = new Device(req.body);
+    await device.save();
+    res.json({ success: true, message: "Device registered successfully", device });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ✅ List Devices API
+app.get("/api/device/list", authenticateToken, async (req, res) => {
+  try {
+    const devices = await Device.find();
+    res.json({ success: true, message: "Device list fetched successfully", devices });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ✅ Update Device API
+app.patch("/api/device/update", authenticateToken, async (req, res) => {
   const { device_id } = req.query;
-  const index = devices.findIndex(d => d.device_id === device_id);
-  if (index === -1) return res.status(404).json({ success: false, message: "Device not found" });
-  devices[index] = { ...devices[index], ...req.body };
-  res.json({ success: true, message: "Device updated", device: devices[index] });
+  try {
+    const updatedDevice = await Device.findOneAndUpdate({ device_id }, req.body, { new: true });
+    if (!updatedDevice) return res.status(404).json({ success: false, message: "Device not found" });
+    res.json({ success: true, message: "Device updated successfully", device: updatedDevice });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
-// Subusers
-app.get("/api/subuser/list", authenticateToken, (req, res) => {
-  res.json({ success: true, message: "Subuser list", subUsers });
+// ✅ Fetch Device Details API
+app.post("/api/device/details", authenticateToken, async (req, res) => {
+  const { device_id } = req.body;
+  try {
+    const device = await Device.findOne({ device_id });
+    if (!device) return res.status(404).json({ success: false, message: "Device not found" });
+
+    res.json({ success: true, message: "Device details fetched successfully", data: device });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
-app.post("/api/subuser/add", authenticateToken, (req, res) => {
-  subUsers.push(req.body);
-  res.json({ success: true, message: "Subuser added", subUsers });
-});
-
-app.delete("/api/subuser/delete", authenticateToken, (req, res) => {
-  const { email } = req.body;
-  subUsers = subUsers.filter(u => u.email !== email);
-  res.json({ success: true, message: "Subuser deleted", subUsers });
-});
-
-//  Bulk Data Endpoint
-console.log("work");
+// ✅ Bulk Data Endpoint
 app.post("/api/device/bulk", authenticateToken, (req, res) => {
   const { device, readingsFormat, readings } = req.body;
   console.log("📡 Bulk data received:", { device, readingsFormat, readings });
-  res.json({ success: true, message: "Bulk data processed locally" });
+  res.json({ success: true, message: "Bulk data processed successfully" });
 });
 
-//  Device Configuration Endpoint
+// ✅ Device Configuration Endpoint
 app.post("/api/device/configuration", authenticateToken, (req, res) => {
   console.log("Device configuration received:", req.body);
-  res.json({ success: true, message: "Configuration updated locally" });
+  res.json({ success: true, message: "Configuration updated successfully" });
 });
-// ✅ Fetch Device Data API
-app.post("/api/device/fetch-device-data", authenticateToken, (req, res) => {
+
+// ✅ Fetch Device Data API with AQI calculation
+app.post("/api/device/fetch-device-data", authenticateToken, async (req, res) => {
   const { device_id } = req.body;
+  try {
+    const device = await Device.findOne({ device_id });
+    if (!device) return res.status(404).json({ success: false, message: "Device not found" });
 
-  const device = devices.find(d => d.device_id === device_id);
-  if (!device) {
-    return res.status(404).json({ success: false, message: "Device not found" });
+    const pm25 = (10 + Math.random() * 50).toFixed(2);
+    const pm10 = (20 + Math.random() * 80).toFixed(2);
+
+    const sampleData = {
+      device_id,
+      lastUpdated: new Date().toISOString(),
+      readings: {
+        temperature: (20 + Math.random() * 5).toFixed(2),
+        humidity: (40 + Math.random() * 20).toFixed(2),
+        pm2_5: pm25,
+        pm10: pm10,
+        co2: (300 + Math.random() * 100).toFixed(2)
+      },
+      aqi: calculateAQI(parseFloat(pm25), parseFloat(pm10))
+    };
+
+    res.json({
+      success: true,
+      message: "Device data fetched successfully",
+      data: sampleData
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-
-  const pm25 = (10 + Math.random() * 50).toFixed(2);
-  const pm10 = (20 + Math.random() * 80).toFixed(2);
-
-  const sampleData = {
-    device_id,
-    lastUpdated: new Date().toISOString(),
-    readings: {
-      temperature: (20 + Math.random() * 5).toFixed(2),
-      humidity: (40 + Math.random() * 20).toFixed(2),
-      pm2_5: pm25,
-      pm10: pm10,
-      co2: (300 + Math.random() * 100).toFixed(2)
-    },
-    aqi: calculateAQI(parseFloat(pm25), parseFloat(pm10))
-  };
-
-  res.json({
-    success: true,
-    message: "Device data fetched successfully",
-    data: sampleData
-  });
 });
+
+// ✅ AQI Calculation Function
 function calculateAQI(pm25, pm10) {
   const pm25Breakpoints = [
     { low: 0, high: 30, aqiLow: 0, aqiHigh: 50 },
@@ -190,38 +233,6 @@ function calculateAQI(pm25, pm10) {
 
   return Math.max(aqiPM25, aqiPM10);
 }
-// ✅ Fetch Device Details Endpoint
-app.post("/api/device/details", authenticateToken, (req, res) => {
-  const { device_id } = req.body;
-
-  const device = devices.find(d => d.device_id === device_id);
-  if (!device) {
-    return res.status(404).json({ success: false, message: "Device not found" });
-  }
-
-  // Mock or dynamic values for device details
-  const deviceDetails = {
-    device_id: device.device_id,
-    sku: "SKU" + Math.floor(1000 + Math.random() * 9000),
-    sensor: "Dust Sensor",
-    frequency: "2.4GHz",
-    device_type: "Air Quality Monitor",
-    hardware_version: "v1.2",
-    mac_address: "34:f3:9a:b3:85:bb",
-    software_version: "1.0.5",
-    active: true,
-    admin: "admin@xyz.com",
-    wifi_always_on: true,
-    location: "New Delhi, India"
-  };
-
-  res.json({
-    success: true,
-    message: "Device details fetched successfully",
-    data: deviceDetails
-  });
-});
-
 
 const PORT = 5000;
 app.listen(PORT, () => console.log(`✅ Local API running on http://localhost:${PORT}`));
