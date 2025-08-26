@@ -13,7 +13,7 @@ const JWT_REFRESH_SECRET = "myrefresh123";
 let refreshTokens = [];
 
 // ✅ MongoDB Connection
-mongoose.connect("mongodb://localhost:27017/deviceDB", {
+mongoose.connect("mongodb+srv://adityabiswari:Aditya%400526@cluster0.aozfjmg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0", {
   useNewUrlParser: true,
   useUnifiedTopology: true
 }).then(() => console.log("✅ MongoDB Connected"))
@@ -235,4 +235,4 @@ function calculateAQI(pm25, pm10) {
 }
 
 const PORT = 5000;
-app.listen(PORT, () => console.log(`✅ Local API running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`✅ API running on ${PORT}`));
