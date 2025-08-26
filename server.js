@@ -20,7 +20,7 @@ mongoose.connect("mongodb+srv://adityabiswari:Aditya%400526@cluster0.aozfjmg.mon
 }).then(() => console.log("✅ MongoDB Connected"))
   .catch(err => console.error("❌ MongoDB connection error:", err));
 
-// ✅ MongoDB Schemas
+//  user Schemas
 const userSchema = new mongoose.Schema({
   firstname: String,
   lastname: String,
@@ -30,6 +30,7 @@ const userSchema = new mongoose.Schema({
   isAdmin: { type: Boolean, default: false }
 });
 
+// device schema
 const deviceSchema = new mongoose.Schema({
   device_id: { type: String, unique: true },
   sku: String,
@@ -45,8 +46,18 @@ const deviceSchema = new mongoose.Schema({
   location: String
 });
 
+// SubUser Schema
+const subUserSchema = new mongoose.Schema({
+  username: { type: String, required: true },
+  email: { type: String, unique: true, required: true },
+  password: { type: String, required: true },
+  role: { type: String, enum: ["viewer", "editor", "admin"], default: "viewer" },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+});
+
 const User = mongoose.model("User", userSchema);
 const Device = mongoose.model("Device", deviceSchema);
+const SubUser = mongoose.model("SubUser", subUserSchema);
 
 // ✅ Health check
 app.get("/api/test", (req, res) => {
@@ -55,8 +66,8 @@ app.get("/api/test", (req, res) => {
 
 // ✅ Utility: Generate Tokens
 function generateTokens(user) {
-  const accessToken = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: "15m" });
-  const refreshToken = jwt.sign({ email: user.email }, JWT_REFRESH_SECRET, { expiresIn: "7d" });
+  const accessToken = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: "1d" });
+  const refreshToken = jwt.sign({ email: user.email }, JWT_REFRESH_SECRET, { expiresIn: "15d" });
   refreshTokens.push(refreshToken);
   return { accessToken, refreshToken };
 }
@@ -159,6 +170,61 @@ app.get("/api/profile", authenticateToken, async (req, res) => {
     res.json({ success: true, message: "Profile fetched successfully", user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Sub Users
+
+// ✅ Add SubUser
+app.post("/api/subuser/add", authenticateToken, async (req, res) => {
+  try {
+    const { username, email, password, role } = req.body;
+
+    if (!username || !email || !password) {
+      return res.status(400).json({ success: false, message: "All fields are required" });
+    }
+
+    const existing = await SubUser.findOne({ email });
+    if (existing) {
+      return res.status(400).json({ success: false, message: "Subuser already exists" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newSubUser = new SubUser({
+      username,
+      email,
+      password: hashedPassword,
+      role: role || "viewer",
+      createdBy: (await User.findOne({ email: req.user.email }))._id
+    });
+
+    await newSubUser.save();
+    res.json({ success: true, message: "Subuser added successfully", subuser: newSubUser });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ✅ List SubUsers
+app.get("/api/subuser/list", authenticateToken, async (req, res) => {
+  try {
+    const subusers = await SubUser.find({ createdBy: (await User.findOne({ email: req.user.email }))._id });
+    res.json({ success: true, message: "Subusers fetched successfully", subusers });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ✅ Delete SubUser
+app.delete("/api/subuser/delete/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await SubUser.findByIdAndDelete(id);
+    if (!deleted) return res.status(404).json({ success: false, message: "Subuser not found" });
+    res.json({ success: true, message: "Subuser deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
